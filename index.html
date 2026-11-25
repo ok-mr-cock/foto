@@ -8,8 +8,34 @@
   body { font-family: sans-serif; text-align: center; padding: 16px; margin: 0; }
   button { font-size: 18px; padding: 14px 24px; margin: 8px; border: 0; border-radius: 8px; background: #2563eb; color: #fff; }
   button.stop { background: #dc2626; }
-  video { width: 100%; max-width: 480px; margin-top: 16px; border-radius: 8px; background: #000; }
   #zprava { margin-top: 12px; color: #b91c1c; }
+
+  .kamera {
+    display: none;
+    position: relative;
+    width: 100%;
+    max-width: 480px;
+    margin: 16px auto 0;
+    overflow: hidden;
+    border-radius: 8px;
+    background: #000;
+  }
+  .kamera video { display: block; width: 100%; }
+
+  /* Obdélník pro cca 9 znaků: široký, nízký (poměr 5:1), uprostřed náhledu */
+  .ramecek {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 80%;
+    aspect-ratio: 5 / 1;
+    border: 3px solid #22c55e;
+    border-radius: 8px;
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5); /* ztmavení okolí */
+    pointer-events: none;
+  }
+  .napoveda { margin-top: 8px; color: #555; font-size: 15px; display: none; }
 </style>
 </head>
 <body>
@@ -17,10 +43,17 @@
   <button id="start">Spustit kameru</button>
   <button id="stop" class="stop" style="display:none">Vypnout kameru</button>
   <div id="zprava"></div>
-  <video id="video" autoplay playsinline muted style="display:none"></video>
+
+  <div class="kamera" id="kamera">
+    <video id="video" autoplay playsinline muted></video>
+    <div class="ramecek"></div>
+  </div>
+  <div class="napoveda" id="napoveda">Umísti 9 znaků do zeleného obdélníku.</div>
 
 <script>
   const video = document.getElementById('video');
+  const kamera = document.getElementById('kamera');
+  const napoveda = document.getElementById('napoveda');
   const startBtn = document.getElementById('start');
   const stopBtn = document.getElementById('stop');
   const zprava = document.getElementById('zprava');
@@ -39,7 +72,8 @@
         audio: false
       });
       video.srcObject = stream;
-      video.style.display = 'block';
+      kamera.style.display = 'block';
+      napoveda.style.display = 'block';
       startBtn.style.display = 'none';
       stopBtn.style.display = 'inline-block';
     } catch (err) {
@@ -56,7 +90,8 @@
   stopBtn.addEventListener('click', () => {
     if (stream) stream.getTracks().forEach(t => t.stop());
     video.srcObject = null;
-    video.style.display = 'none';
+    kamera.style.display = 'none';
+    napoveda.style.display = 'none';
     stopBtn.style.display = 'none';
     startBtn.style.display = 'inline-block';
   });
