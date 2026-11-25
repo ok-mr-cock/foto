@@ -3,61 +3,69 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Test kamery</title>
+<title>Čtení tabulky 3x3</title>
 <style>
   body { font-family: sans-serif; text-align: center; padding: 16px; margin: 0; }
-  button { font-size: 18px; padding: 14px 24px; margin: 8px; border: 0; border-radius: 8px; background: #2563eb; color: #fff; }
+  button { font-size: 18px; padding: 14px 24px; margin: 6px; border: 0; border-radius: 8px; background: #2563eb; color: #fff; }
   button.stop { background: #dc2626; }
-  #zprava { margin-top: 12px; color: #b91c1c; }
+  button.cti { background: #16a34a; }
+  button:disabled { opacity: .5; }
+  #zprava { margin-top: 10px; color: #b91c1c; }
 
-  .kamera {
-    display: none;
-    position: relative;
-    width: 100%;
-    max-width: 480px;
-    margin: 16px auto 0;
-    overflow: hidden;
-    border-radius: 8px;
-    background: #000;
-  }
+  .kamera { display: none; position: relative; width: 100%; max-width: 480px; margin: 16px auto 0;
+            overflow: hidden; border-radius: 8px; background: #000; }
   .kamera video { display: block; width: 100%; }
 
-  /* Obdélník pro cca 9 znaků: široký, nízký (poměr 5:1), uprostřed náhledu */
-  .ramecek {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    width: 80%;
-    aspect-ratio: 5 / 1;
-    border: 3px solid #22c55e;
-    border-radius: 8px;
-    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5); /* ztmavení okolí */
-    pointer-events: none;
-  }
-  .napoveda { margin-top: 8px; color: #555; font-size: 15px; display: none; }
+  /* Čtverec 3x3 uprostřed náhledu */
+  .ramecek { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+             width: 75%; aspect-ratio: 1 / 1; display: grid;
+             grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+             border: 3px solid #22c55e; box-shadow: 0 0 0 9999px rgba(0,0,0,.5); pointer-events: none; }
+  .ramecek div { border: 1px solid rgba(34,197,94,.8); }
+
+  #vysledek { font-family: monospace; font-size: 36px; margin: 16px 0 4px; letter-spacing: 4px; line-height: 1.3; }
+  #vysledek .nejiste { color: #dc2626; }
+  #nahledy { display: grid; grid-template-columns: repeat(3, 60px); gap: 4px; justify-content: center; margin: 8px auto; }
+  #nahledy canvas { width: 60px; height: 60px; border: 1px solid #999; }
+  .nap { color: #555; font-size: 15px; }
 </style>
 </head>
 <body>
-  <h1>Test kamery</h1>
+  <h1>Čtení tabulky 3×3</h1>
   <button id="start">Spustit kameru</button>
+  <button id="cti" class="cti" style="display:none">Přečíst</button>
   <button id="stop" class="stop" style="display:none">Vypnout kameru</button>
   <div id="zprava"></div>
 
   <div class="kamera" id="kamera">
     <video id="video" autoplay playsinline muted></video>
-    <div class="ramecek"></div>
+    <div class="ramecek"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
   </div>
-  <div class="napoveda" id="napoveda">Umísti 9 znaků do zeleného obdélníku.</div>
+  <p class="nap" id="nap" style="display:none">Tabulku zarovnej do zeleného čtverce: nahoře 3 písmena, dole 6 číslic.</p>
 
+  <div id="vysledek"></div>
+  <div class="nap" id="info"></div>
+  <div id="nahledy"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 <script>
+  // Povolené znaky. Uprav podle toho, co v tabulce skutečně použiješ.
+  const PISMENA = 'AEHKLTXY';   // písmena bez I, O, Q, D, B, S, Z, G, U, V, W, M, N, P, R, F...
+  const CISLICE = '234579';     // bez 0, 1, 6, 8 (záměny s O, I, 9 a B)
+  const MIN_JISTOTA = 60;       // pod touto jistotou (v %) se znak označí červeně
+
   const video = document.getElementById('video');
   const kamera = document.getElementById('kamera');
-  const napoveda = document.getElementById('napoveda');
+  const ramecek = document.querySelector('.ramecek');
   const startBtn = document.getElementById('start');
   const stopBtn = document.getElementById('stop');
+  const ctiBtn = document.getElementById('cti');
+  const nap = document.getElementById('nap');
   const zprava = document.getElementById('zprava');
-  let stream = null;
+  const vysledek = document.getElementById('vysledek');
+  const info = document.getElementById('info');
+  const nahledy = document.getElementById('nahledy');
+  let stream = null, wPismena = null, wCislice = null;
 
   startBtn.addEventListener('click', async () => {
     zprava.textContent = '';
@@ -66,24 +74,19 @@
       return;
     }
     try {
-      // Tady se telefon zeptá na povolení přístupu k fotoaparátu
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' },
+        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
         audio: false
       });
       video.srcObject = stream;
       kamera.style.display = 'block';
-      napoveda.style.display = 'block';
+      nap.style.display = 'block';
       startBtn.style.display = 'none';
-      stopBtn.style.display = 'inline-block';
+      ctiBtn.style.display = stopBtn.style.display = 'inline-block';
     } catch (err) {
-      if (err.name === 'NotAllowedError') {
-        zprava.textContent = 'Přístup ke kameře byl zamítnut. Povol ho v nastavení prohlížeče.';
-      } else if (err.name === 'NotFoundError') {
-        zprava.textContent = 'Kamera nebyla nalezena.';
-      } else {
-        zprava.textContent = 'Chyba: ' + err.name;
-      }
+      zprava.textContent = err.name === 'NotAllowedError'
+        ? 'Přístup ke kameře byl zamítnut. Povol ho v nastavení prohlížeče.'
+        : 'Chyba: ' + err.name;
     }
   });
 
@@ -91,9 +94,100 @@
     if (stream) stream.getTracks().forEach(t => t.stop());
     video.srcObject = null;
     kamera.style.display = 'none';
-    napoveda.style.display = 'none';
-    stopBtn.style.display = 'none';
+    nap.style.display = 'none';
+    ctiBtn.style.display = stopBtn.style.display = 'none';
     startBtn.style.display = 'inline-block';
+  });
+
+  async function dejWorkery() {
+    if (wPismena) return;
+    info.textContent = 'Načítám OCR (poprvé to chvíli trvá)…';
+    wPismena = await Tesseract.createWorker('eng');
+    await wPismena.setParameters({ tessedit_char_whitelist: PISMENA, tessedit_pageseg_mode: '10' });
+    wCislice = await Tesseract.createWorker('eng');
+    await wCislice.setParameters({ tessedit_char_whitelist: CISLICE, tessedit_pageseg_mode: '10' });
+  }
+
+  // Otsuho práh: najde vhodnou hranici mezi tmavým textem a světlým pozadím
+  function otsu(hist, total) {
+    let sum = 0; for (let i = 0; i < 256; i++) sum += i * hist[i];
+    let sumB = 0, wB = 0, max = 0, prah = 128;
+    for (let t = 0; t < 256; t++) {
+      wB += hist[t]; if (!wB) continue;
+      const wF = total - wB; if (!wF) break;
+      sumB += t * hist[t];
+      const mB = sumB / wB, mF = (sum - sumB) / wF;
+      const v = wB * wF * (mB - mF) * (mB - mF);
+      if (v > max) { max = v; prah = t; }
+    }
+    return prah;
+  }
+
+  // Vyřízne jednu buňku, převede na černobílou, přidá bílý okraj
+  function pripravBunku(frame, sx, sy, sw, sh) {
+    const m = 0.12;                                   // oříznutí okraje buňky (čáry mřížky)
+    const x = sx + sw * m, y = sy + sh * m, w = sw * (1 - 2 * m), h = sh * (1 - 2 * m);
+    const V = 100, pad = 24, S = V + 2 * pad;
+    const c = document.createElement('canvas');
+    c.width = c.height = S;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, S, S);
+    ctx.drawImage(frame, x, y, w, h, pad, pad, V, V);
+    const img = ctx.getImageData(pad, pad, V, V), d = img.data;
+    const hist = new Array(256).fill(0);
+    for (let i = 0; i < d.length; i += 4) {
+      const g = Math.round(0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2]);
+      d[i] = g; hist[g]++;
+    }
+    const prah = otsu(hist, V * V);
+    let tmavych = 0;
+    for (let i = 0; i < d.length; i += 4) if (d[i] <= prah) tmavych++;
+    const invert = tmavych > V * V / 2;               // text má být tmavý na světlém
+    for (let i = 0; i < d.length; i += 4) {
+      let cerna = d[i] <= prah; if (invert) cerna = !cerna;
+      d[i] = d[i+1] = d[i+2] = cerna ? 0 : 255; d[i+3] = 255;
+    }
+    ctx.putImageData(img, pad, pad);
+    return c;
+  }
+
+  ctiBtn.addEventListener('click', async () => {
+    ctiBtn.disabled = true; vysledek.textContent = ''; nahledy.innerHTML = '';
+    try {
+      await dejWorkery();
+      info.textContent = 'Čtu…';
+      // Snímek z videa v plném rozlišení
+      const frame = document.createElement('canvas');
+      frame.width = video.videoWidth; frame.height = video.videoHeight;
+      frame.getContext('2d').drawImage(video, 0, 0);
+      // Kde je zelený čtverec vzhledem k videu
+      const k = video.videoWidth / video.clientWidth;
+      const rv = video.getBoundingClientRect(), rr = ramecek.getBoundingClientRect();
+      const X = (rr.left - rv.left) * k, Y = (rr.top - rv.top) * k, W = rr.width * k, H = rr.height * k;
+      const cw = W / 3, ch = H / 3;
+
+      let radky = ['', '', ''], nejiste = new Set();
+      for (let r = 0; r < 3; r++) {
+        for (let s = 0; s < 3; s++) {
+          const c = pripravBunku(frame, X + s * cw, Y + r * ch, cw, ch);
+          nahledy.appendChild(c);
+          const { data } = await (r === 0 ? wPismena : wCislice).recognize(c);
+          const znak = (data.text || '').replace(/\s/g, '').charAt(0) || '?';
+          radky[r] += znak;
+          if (znak === '?' || data.confidence < MIN_JISTOTA) nejiste.add(r * 3 + s);
+        }
+      }
+      vysledek.innerHTML = radky.map((t, r) =>
+        [...t].map((z, s) => nejiste.has(r * 3 + s) ? `<span class="nejiste">${z}</span>` : z).join('')
+      ).join('<br>');
+      info.textContent = nejiste.size
+        ? 'Červené znaky jsou nejisté, zkus to znovu nebo líp zarovnat tabulku.'
+        : 'Hotovo.';
+    } catch (e) {
+      zprava.textContent = 'Chyba při čtení: ' + e.message;
+      info.textContent = '';
+    }
+    ctiBtn.disabled = false;
   });
 </script>
 </body>
