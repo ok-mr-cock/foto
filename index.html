@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Test kamery</title>
+<style>
+  body { font-family: sans-serif; text-align: center; padding: 16px; margin: 0; }
+  button { font-size: 18px; padding: 14px 24px; margin: 8px; border: 0; border-radius: 8px; background: #2563eb; color: #fff; }
+  button.stop { background: #dc2626; }
+  video { width: 100%; max-width: 480px; margin-top: 16px; border-radius: 8px; background: #000; }
+  #zprava { margin-top: 12px; color: #b91c1c; }
+</style>
+</head>
+<body>
+  <h1>Test kamery</h1>
+  <button id="start">Spustit kameru</button>
+  <button id="stop" class="stop" style="display:none">Vypnout kameru</button>
+  <div id="zprava"></div>
+  <video id="video" autoplay playsinline muted style="display:none"></video>
+
+<script>
+  const video = document.getElementById('video');
+  const startBtn = document.getElementById('start');
+  const stopBtn = document.getElementById('stop');
+  const zprava = document.getElementById('zprava');
+  let stream = null;
+
+  startBtn.addEventListener('click', async () => {
+    zprava.textContent = '';
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      zprava.textContent = 'Tento prohlížeč nebo adresa (je nutné HTTPS) kameru nepodporuje.';
+      return;
+    }
+    try {
+      // Tady se telefon zeptá na povolení přístupu k fotoaparátu
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' },
+        audio: false
+      });
+      video.srcObject = stream;
+      video.style.display = 'block';
+      startBtn.style.display = 'none';
+      stopBtn.style.display = 'inline-block';
+    } catch (err) {
+      if (err.name === 'NotAllowedError') {
+        zprava.textContent = 'Přístup ke kameře byl zamítnut. Povol ho v nastavení prohlížeče.';
+      } else if (err.name === 'NotFoundError') {
+        zprava.textContent = 'Kamera nebyla nalezena.';
+      } else {
+        zprava.textContent = 'Chyba: ' + err.name;
+      }
+    }
+  });
+
+  stopBtn.addEventListener('click', () => {
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    video.srcObject = null;
+    video.style.display = 'none';
+    stopBtn.style.display = 'none';
+    startBtn.style.display = 'inline-block';
+  });
+</script>
+</body>
+</html>
